@@ -1,17 +1,18 @@
-// see SignupForm.js for comments
 import { useState } from 'react';
+import { useMutation } from '@apollo/client';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Form, Button, Alert } from 'react-bootstrap';
 
-import { loginUser } from '../utils/API';
+
+import { LOGIN_USER } from '../utils/mutations';
 import Auth from '../utils/auth';
 import type { User } from '../models/User';
 
-// biome-ignore lint/correctness/noEmptyPattern: <explanation>
-const LoginForm = ({}: { handleModalClose: () => void }) => {
+const LoginForm = () => {
+  const [loginUser] = useMutation(LOGIN_USER);
   const [userFormData, setUserFormData] = useState<User>({ username: '', email: '', password: '', savedBooks: [] });
-  const [validated] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
+  const [validated] = useState(false);
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
@@ -27,16 +28,9 @@ const LoginForm = ({}: { handleModalClose: () => void }) => {
       event.preventDefault();
       event.stopPropagation();
     }
-
+      const { data } = await loginUser({ variables: { ...userFormData } });
     try {
-      const response = await loginUser(userFormData);
-
-      if (!response.ok) {
-        throw new Error('something went wrong!');
-      }
-
-      const { token } = await response.json();
-      Auth.login(token);
+      Auth.login(data.login.token);
     } catch (err) {
       console.error(err);
       setShowAlert(true);
@@ -53,7 +47,7 @@ const LoginForm = ({}: { handleModalClose: () => void }) => {
   return (
     <>
       <Form noValidate validated={validated} onSubmit={handleFormSubmit}>
-        <Alert dismissible onClose={() => setShowAlert(false)} show={showAlert} variant='danger'>
+        <Alert show={showAlert} variant='danger'>
           Something went wrong with your login credentials!
         </Alert>
         <Form.Group className='mb-3'>

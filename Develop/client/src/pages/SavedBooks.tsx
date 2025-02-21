@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Container, Card, Button, Row, Col } from 'react-bootstrap';
 
-import { getMe, deleteBook } from '../utils/API';
+import { REMOVE_BOOK } from '../utils/mutations';
+import { GET_ME } from '../utils/queries';
+import client from '../utils/apolloClient';
 import Auth from '../utils/auth';
 import { removeBookId } from '../utils/localStorage';
 import type { User } from '../models/User';
+import { useMutation } from '@apollo/client';
 
 const SavedBooks = () => {
   const [userData, setUserData] = useState<User>({
@@ -18,51 +21,56 @@ const SavedBooks = () => {
   const userDataLength = Object.keys(userData).length;
 
   useEffect(() => {
-    const getUserData = async () => {
-      try {
-        const token = Auth.loggedIn() ? Auth.getToken() : null;
-
-        if (!token) {
-          return false;
+    const fetchSavedBooks = async () => {
+        try {
+            const { data } = await client.query({
+                query: GET_ME, // Replace with your actual query
+            });
+            setUserData(data.me); // Adjust based on your data structure
+        } catch (error) {
+            console.error("Error fetching saved books:", error);
         }
-
-        const response = await getMe(token);
-
-        if (!response.ok) {
-          throw new Error('something went wrong!');
-        }
-
-        const user = await response.json();
-        setUserData(user);
-      } catch (err) {
-        console.error(err);
-      }
     };
 
-    getUserData();
-  }, [userDataLength]);
+    fetchSavedBooks();
+}, []); 
 
-  // create function that accepts the book's mongo _id value as param and deletes the book from the database
-  const handleDeleteBook = async (bookId: string) => {
-    const token = Auth.loggedIn() ? Auth.getToken() : null;
-
-    if (!token) {
-      return false;
-    }
-
-    try {
-      const response = await deleteBook(bookId, token);
-
-      if (!response.ok) {
-        throw new Error('something went wrong!');
+const [removeBook] = useMutation(REMOVE_BOOK, {
+  update(cache, { data: { removeBook: { bookId } } }) {
+      // Optional: Update the Apollo cache after removing the book
+      const cachedData = cache.readQuery<{ me: User }>({ query: GET_ME }); // Adjust based on your query
+      if (cachedData && cachedData.me) {
+          const { me } = cachedData;
+          const updatedMe = {
+              ...me,
+              savedBooks: me.savedBooks.filter(book => book.bookId !== bookId),
+          };
+          cache.writeQuery({
+              query: GET_ME,
+              data: { me: updatedMe },
+          });
       }
+  },
+});
+  // create function that accepts the book's mongo _id value as param and deletes the book from the database
+  interface Book {
+    bookId: string;
+    authors: string[];
+    description: string;
+    image?: string;
+    title: string;
+  }
 
-      const updatedUser = await response.json();
-      setUserData(updatedUser);
-      // upon success, remove book's id from localStorage
-      removeBookId(bookId);
-    } catch (err) {
-      console.error(err);
+  interface RemoveBookVariables {
+    bookId: string;
+  }
+
+  const handleDeleteBook = async (bookId: string): Promise<void> => {
+    try {
+      await removeBook({ variables: { bookId } as RemoveBookVariables }); // Pass the bookId as a variable
+      // Optionally, you can also update the local state here if needed
+    } catch (error) {
+      console.error("Error deleting the book:", error);
     }
   };
 
